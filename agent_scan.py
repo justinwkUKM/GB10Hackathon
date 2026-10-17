@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Any
 
 
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 SKIP_DIRS = {".git", ".venv", "venv", "node_modules", "vendor", "dist", "build", "__pycache__"}
 TEXT_SUFFIXES = {".py", ".js", ".jsx", ".ts", ".tsx", ".go", ".java", ".rb", ".php", ".rs", ".yaml", ".yml", ".toml", ".json", ".md", ".txt", ".env.example"}
 CODE_SUFFIXES = {".py", ".js", ".jsx", ".ts", ".tsx", ".go", ".java", ".rb", ".php", ".rs"}
@@ -137,8 +137,15 @@ def inventory(root: Path) -> dict[str, Any]:
             signals.add("a2a")
         if re.search(r"(?i)(?:@app\.(?:get|post|route)|router\.(?:get|post)|app\.(?:get|post))\s*\([^\n]*(?:chat|agent|mcp|a2a)", content):
             endpoint_files.append(rel)
+    dvvaa = False
+    package = root / "package.json"
+    if package.is_file():
+        try:
+            dvvaa = json.loads(package.read_text()).get("name") == "damn-vulnerable-ai-agent"
+        except (OSError, json.JSONDecodeError, AttributeError):
+            pass
     return {"files": files, "manifests": sorted(set(manifests)), "signals": sorted(signals),
-            "endpoint_files": sorted(set(endpoint_files))}
+            "endpoint_files": sorted(set(endpoint_files)), "dvaa": dvvaa}
 
 
 def plan_for_url(target: str, tools: dict[str, str | None]) -> dict[str, Any]:
@@ -150,18 +157,21 @@ def plan_for_url(target: str, tools: dict[str, str | None]) -> dict[str, Any]:
         signals.append("possible-mcp")
     if "a2a" in path or "agent" in path:
         signals.append("possible-a2a")
-    selected = [{"id": "http-surface", "reason": "Check reachability, response headers, and exposed service metadata."}]
+    selected = [
+        {"id": "http-surface", "reason": "Check reachability, response headers, and exposed service metadata."},
+        {"id": "mcp-discovery", "reason": "Probe the target and common MCP paths with read-only protocol discovery and inventory requests."},
+        {"id": "a2a-discovery", "reason": "Check standard A2A Agent Card locations and, when found, issue a harmless unknown-task lookup."},
+    ]
     skipped = []
+    selected.append({"id": "runtime-surface-discovery", "reason": "Actively identify common chat and agent runtime routes; model prompts are sent only to a confirmed compatible chat endpoint."})
     if chat:
-        selected.append({"id": "bounded-chat-safety", "reason": "The URL identifies an OpenAI-compatible chat completion endpoint; run two low-volume prompt-handling checks."})
-        for scanner in ("garak", "promptfoo"):
-            if tools.get(scanner):
-                reason = f"{scanner} is installed, but the target's auth, request format, and response mapping are not configured for this version."
-            else:
-                reason = f"Compatible endpoint detected, but {scanner} is not installed in the current environment."
-            skipped.append({"id": scanner, "reason": reason})
+        selected.append({"id": "bounded-chat-safety", "reason": "The URL identifies an OpenAI-compatible chat completion endpoint; run bounded prompt-handling checks."})
     else:
-        skipped.append({"id": "llm-redteam", "reason": "No chat or agent protocol endpoint is identified from this URL; discover the application API before sending model prompts."})
+        skipped.append({"id": "llm-redteam", "reason": "Active runtime discovery will look for a compatible chat route; model prompts are withheld until an endpoint is confirmed."})
+    if chat or tools.get("garak"):
+        skipped.append({"id": "garak", "reason": "Garak requires a configured generator adapter; generic URL scans use native probes and do not guess model configuration."})
+    if chat or tools.get("promptfoo"):
+        skipped.append({"id": "promptfoo", "reason": "Promptfoo requires provider and assertion configuration; generic URL scans use native probes and do not guess model configuration."})
     return {"kind": "url", "target": display_target(target), "signals": signals, "selected": selected, "skipped": skipped,
             "authorization": "required for non-loopback active requests"}
 
@@ -175,12 +185,24 @@ def plan_for_repo(root: Path, target: str, tools: dict[str, str | None]) -> tupl
         selected.append({"id": "dependency-inventory", "reason": "Dependency manifests were found and will be inventoried."})
     skipped = [{"id": "dependency-vulnerability-audit", "reason": "A package vulnerability audit needs package-manager/network policy and is not run implicitly."},
                {"id": "runtime-redteam", "reason": "The repository is not launched automatically; provide a running URL to test runtime behavior."}]
+    known_lab = False
+    if info["dvaa"]:
+        known_lab = root.resolve() == (Path(__file__).resolve().parent / ".targets" / "dvaa").resolve()
+        if known_lab:
+            selected.append({"id": "dvaa-exhaustive-suite", "reason": "Run this project's offline exhaustive workflow: its built-in runtime matrix, Promptfoo, Garak, MCP and A2A tests."})
+            skipped = [item for item in skipped if item["id"] not in {"runtime-redteam"}]
+            signals = sorted(set(signals) | {"dvaa-lab"})
+        else:
+            skipped.append({"id": "dvaa-exhaustive-suite", "reason": "The DVAA profile was detected, but automated runtime execution is limited to the preconfigured local training checkout."})
     if "openai-compatible" in signals:
         skipped.append({"id": "promptfoo-and-garak", "reason": "A compatible chat surface appears in source, but its service endpoint/model configuration is not known."})
     if "mcp" in signals:
         skipped.append({"id": "mcp-protocol-tests", "reason": "MCP signals were found; protocol checks require a configured, running MCP transport."})
     if "a2a" in signals:
         skipped.append({"id": "a2a-protocol-tests", "reason": "A2A signals were found; protocol checks require a configured, running agent card endpoint."})
+    if known_lab:
+        # These suites are included in the configured local DVAA workflow.
+        skipped = [item for item in skipped if item["id"] not in {"promptfoo-and-garak", "mcp-protocol-tests", "a2a-protocol-tests"}]
     if tools.get("semgrep"):
         reason = "Semgrep is installed, but no local ruleset is configured; this scanner does not fetch a remote ruleset automatically."
     else:
@@ -274,6 +296,136 @@ def http_post_json(url: str, payload: dict[str, Any], headers: dict[str, str], t
         return exc.code, dict(exc.headers.items()), body
 
 
+def unique_urls(urls: list[str]) -> list[str]:
+    return list(dict.fromkeys(urls))
+
+
+def protocol_check_summary(check: dict[str, Any]) -> dict[str, Any]:
+    """Keep protocol reports useful without copying returned secrets or user data."""
+    summary = {key: check[key] for key in ("name", "port", "status", "result", "error") if key in check}
+    response = check.get("response")
+    if isinstance(response, dict):
+        result = response.get("result")
+        if isinstance(result, dict):
+            text = json.dumps(result, ensure_ascii=False)
+            summary["response_indicator"] = "vulnerability marker returned" if "VULNERABLE" in text else "response received; content withheld"
+        else:
+            summary["response_indicator"] = "response received; content withheld"
+    return summary
+
+
+def scan_mcp(target: str, timeout: float) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Perform read-only MCP discovery and list methods on likely HTTP endpoints."""
+    parsed = validate_url(target)
+    origin = urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, "", "", ""))
+    base_path = parsed.path.rstrip("/")
+    candidates = unique_urls([target, urllib.parse.urljoin(origin, base_path + "/mcp"),
+                              urllib.parse.urljoin(origin, "/mcp"), origin + "/"])
+    checks: list[dict[str, Any]] = []
+    findings: list[dict[str, Any]] = []
+    request_id = 71001
+    for endpoint in candidates:
+        endpoint_result: dict[str, Any] = {"endpoint": display_target(endpoint), "protocol": "mcp", "status": "not_detected"}
+        for method, params in (("server/discover", {}), ("initialize", {"protocolVersion": "2025-11-25", "capabilities": {}, "clientInfo": {"name": "agent-scan", "version": VERSION}})):
+            request_id += 1
+            try:
+                status, response_headers, response = http_post_json(
+                    endpoint, {"jsonrpc": "2.0", "id": request_id, "method": method, "params": params}, {}, timeout)
+            except (OSError, TimeoutError, ValueError, urllib.error.URLError) as exc:
+                endpoint_result.update(status="error", error=str(exc)[:240])
+                break
+            if status in (404, 405, 415, 501) or not isinstance(response, dict):
+                continue
+            # A JSON-RPC response, including a method-not-found error, confirms an MCP-like transport.
+            if response.get("jsonrpc") != "2.0" or ("result" not in response and "error" not in response):
+                continue
+            endpoint_result.update(status="detected", discovery_method=method, http_status=status,
+                                   session_header_present=any(k.lower() == "mcp-session-id" for k in response_headers))
+            if "error" in response and method == "server/discover":
+                request_id += 1
+                try:
+                    status, _, response = http_post_json(
+                        endpoint, {"jsonrpc": "2.0", "id": request_id, "method": "initialize",
+                                   "params": {"protocolVersion": "2025-11-25", "capabilities": {},
+                                              "clientInfo": {"name": "agent-scan", "version": VERSION}}}, {}, timeout)
+                except Exception:
+                    response = {}
+            if isinstance(response, dict) and isinstance(response.get("result"), dict):
+                result = response["result"]
+                endpoint_result["server_info"] = result.get("serverInfo") or result.get("server_info")
+                endpoint_result["capabilities"] = list((result.get("capabilities") or {}).keys())[:20]
+            lists = {}
+            for list_method, key in (("tools/list", "tools"), ("prompts/list", "prompts"), ("resources/list", "resources")):
+                request_id += 1
+                try:
+                    list_status, _, list_response = http_post_json(
+                        endpoint, {"jsonrpc": "2.0", "id": request_id, "method": list_method, "params": {}}, {}, timeout)
+                    if isinstance(list_response, dict) and isinstance(list_response.get("result"), dict):
+                        values = list_response["result"].get(key, [])
+                        lists[key] = [item.get("name", "unnamed") for item in values[:100] if isinstance(item, dict)] if isinstance(values, list) else []
+                    elif isinstance(list_response, dict) and list_response.get("error"):
+                        lists[key] = {"unsupported": str(list_response["error"].get("message", "error"))[:120]}
+                    else:
+                        lists[key] = {"http_status": list_status, "unavailable": True}
+                except Exception as exc:
+                    lists[key] = {"error": str(exc)[:120]}
+            endpoint_result["inventory"] = lists
+            break
+        checks.append(endpoint_result)
+    return checks, findings
+
+
+def scan_a2a(target: str, timeout: float) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Discover A2A cards and issue a non-creating random task lookup if possible."""
+    parsed = validate_url(target)
+    origin = urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, "", "", ""))
+    candidates = unique_urls([urllib.parse.urljoin(origin, path) for path in
+                              ("/.well-known/agent-card.json", "/.well-known/agent.json")])
+    checks: list[dict[str, Any]] = []
+    findings: list[dict[str, Any]] = []
+    for card_url in candidates:
+        result: dict[str, Any] = {"protocol": "a2a", "card_url": card_url, "status": "not_detected"}
+        try:
+            status, headers, body = http_get(card_url, timeout)
+            if status < 400:
+                try:
+                    card = json.loads(body)
+                except json.JSONDecodeError:
+                    card = None
+                if isinstance(card, dict) and (card.get("name") or card.get("supportedInterfaces") or card.get("url")):
+                    result.update(status="detected", http_status=status,
+                                  name=str(card.get("name", ""))[:200],
+                                  version=str(card.get("version", ""))[:100],
+                                  skills=[str(skill.get("name", "unnamed"))[:100] for skill in card.get("skills", [])[:50] if isinstance(skill, dict)] if isinstance(card.get("skills", []), list) else [],
+                                  authenticated=bool(card.get("securitySchemes")))
+                    card_endpoint = card.get("url")
+                    if isinstance(card_endpoint, str):
+                        resolved = urllib.parse.urljoin(card_url, card_endpoint)
+                        card_parsed = urllib.parse.urlsplit(resolved)
+                        if card_parsed.scheme == parsed.scheme and card_parsed.netloc == parsed.netloc:
+                            unknown_task = f"agent-scan-nonexistent-{int(time.time())}"
+                            rpc = {"jsonrpc": "2.0", "id": 72001, "method": "tasks/get", "params": {"id": unknown_task}}
+                            try:
+                                rpc_status, _, rpc_response = http_post_json(resolved, rpc, {}, timeout)
+                                result["unknown_task_lookup"] = {"http_status": rpc_status,
+                                    "returned_task": bool(isinstance(rpc_response, dict) and rpc_response.get("result"))}
+                                if isinstance(rpc_response, dict) and rpc_response.get("result"):
+                                    findings.append({"severity": "medium", "rule": "a2a-unknown-task-lookup-returned-task",
+                                                     "evidence": "A random nonexistent task ID returned a task object; review task ID authorization and lookup behavior."})
+                            except Exception as exc:
+                                result["unknown_task_lookup"] = {"error": str(exc)[:180]}
+                        else:
+                            result["unknown_task_lookup"] = {"status": "not_sent", "reason": "Agent Card endpoint is cross-origin; target scope was not expanded."}
+                else:
+                    result.update(http_status=status, status="not_detected", note="Response was not a recognizable Agent Card.")
+            else:
+                result["http_status"] = status
+        except Exception as exc:
+            result.update(status="error", error=str(exc)[:240])
+        checks.append(result)
+    return checks, findings
+
+
 def scan_url(target: str, timeout: float, api_key_env: str | None, model: str) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     parsed = validate_url(target)
     findings: list[dict[str, Any]] = []
@@ -288,7 +440,14 @@ def scan_url(target: str, timeout: float, api_key_env: str | None, model: str) -
         findings.append({"severity": "low", "rule": "missing-http-security-headers", "evidence": ", ".join(absent)})
     if status >= 500:
         findings.append({"severity": "medium", "rule": "http-server-error", "evidence": f"Target returned HTTP {status}."})
-    info: dict[str, Any] = {"surface": surface, "body_sample_bytes": len(body.encode("utf-8"))}
+    info: dict[str, Any] = {"surface": surface, "body_sample_bytes": len(body.encode("utf-8")),
+                            "runtime_discovery": {"target_checked": display_target(target), "status": "completed"}}
+    mcp_checks, mcp_findings = scan_mcp(target, timeout)
+    a2a_checks, a2a_findings = scan_a2a(target, timeout)
+    info["mcp_checks"] = mcp_checks
+    info["a2a_checks"] = a2a_checks
+    findings.extend(mcp_findings)
+    findings.extend(a2a_findings)
     path = parsed.path.lower().rstrip("/")
     if path.endswith("/v1/chat/completions") or path.endswith("/chat/completions"):
         if api_key_env and os.getenv(api_key_env):
@@ -332,7 +491,98 @@ def scan_url(target: str, timeout: float, api_key_env: str | None, model: str) -
         info["chat_scan_note"] = "Two low-volume probes only. Results are indicators, not a comprehensive assessment."
     else:
         info["chat_scan_note"] = "No chat-completion route was identifiable from the supplied URL; no model prompts were sent."
+        info["runtime_discovery"]["chat_prompts_sent"] = 0
     return findings, info
+
+
+def run_dvaa_suite(root: Path, timeout: float) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Run the preconfigured offline DVAA lab workflow; never launch other repos."""
+    project_root = Path(__file__).resolve().parent
+    known_target = (project_root / ".targets" / "dvaa").resolve()
+    if root.resolve() != known_target:
+        raise ValueError("DVAA runtime suite is restricted to the preconfigured local training checkout.")
+    script = project_root / "run-dvaa-exhaustive.sh"
+    if not script.is_file():
+        raise RuntimeError("The DVAA exhaustive scan workflow script is missing.")
+    started = time.monotonic()
+    limit = max(1800, timeout * 30)
+    proc = None
+    try:
+        proc = subprocess.run(["bash", str(script)], cwd=project_root, capture_output=True,
+                              text=True, timeout=limit)
+        suite_status = "completed" if proc.returncode == 0 else "failed"
+        error = proc.stderr[-1600:] if proc.returncode else ""
+        output = proc.stdout[-5000:]
+    except subprocess.TimeoutExpired as exc:
+        suite_status = "timed_out"
+        error = "DVAA exhaustive workflow exceeded the overall time limit."
+        output = (exc.stdout or b"").decode(errors="replace")[-5000:] if isinstance(exc.stdout, bytes) else str(exc.stdout or "")[-5000:]
+    results = project_root / "redteam-results"
+    runtime: dict[str, Any] = {"dvaa_exhaustive_suite": {"status": suite_status,
+        "duration_seconds": round(time.monotonic() - started, 2), "return_code": proc.returncode if proc else None,
+        "output_tail": output, "error": error, "application_started": True,
+        "artifacts_directory": str(results)}}
+    summary = results / "dvaa-exhaustive-summary.md"
+    runtime["dvaa_exhaustive_suite"]["summary_file"] = str(summary) if summary.exists() else None
+    if summary.exists():
+        runtime["dvaa_exhaustive_suite"]["summary"] = summary.read_text(errors="replace")[:16000]
+    findings: list[dict[str, Any]] = []
+    protocol_file = results / "dvaa-protocol-checks.json"
+    if protocol_file.exists():
+        protocol = json.loads(protocol_file.read_text())
+        runtime["mcp_checks"] = [protocol_check_summary(check) for check in protocol.get("checks", []) if check.get("port", 0) < 7020]
+        runtime["a2a_checks"] = [protocol_check_summary(check) for check in protocol.get("checks", []) if check.get("port", 0) >= 7020]
+        for check in protocol.get("checks", []):
+            if check.get("result") == "finding":
+                name = check.get("name", "protocol-finding")
+                findings.append({"severity": "high", "rule": "dvaa-" + re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-"),
+                                 "evidence": f"The local DVAA lab returned behavior flagged by its protocol assertion: {name}."})
+    pf_file = results / "promptfoo-dvaa-full-results.json"
+    if pf_file.exists():
+        try:
+            pf = json.loads(pf_file.read_text())
+            rows = pf.get("results", {}).get("results", [])
+            failed = [row for row in rows if not row.get("success")]
+            no_output = [row for row in failed if row.get("error") == "No output"]
+            assertions = [row for row in failed if row.get("error") != "No output"]
+            runtime["promptfoo"] = {"status": "completed", "total": len(rows), "passed": len(rows) - len(failed),
+                                    "failed_assertions": len(assertions), "no_output": len(no_output)}
+            for row in assertions:
+                label = row.get("provider", {}).get("label", "unknown agent")
+                findings.append({"severity": "high", "rule": "promptfoo-sensitive-data-assertion", "evidence": f"Promptfoo assertion failed for {label}; inspect the saved Promptfoo report for matched output."})
+        except (OSError, json.JSONDecodeError):
+            runtime["promptfoo"] = {"status": "report_unreadable"}
+    selftest_file = results / "dvaa-selftest.json"
+    if selftest_file.exists():
+        try:
+            selftest = json.loads(selftest_file.read_text()).get("summary", {})
+            runtime["dvaa_selftest"] = {key: selftest[key] for key in ("total", "pwned", "blocked", "weakSignal", "inconclusive") if key in selftest}
+        except (OSError, json.JSONDecodeError):
+            runtime["dvaa_selftest"] = {"status": "report_unreadable"}
+    garak_statuses = []
+    for name in ("legacy", "secure"):
+        report_file = results / f"garak-dvaa-{name}-g1.report.jsonl"
+        if report_file.exists():
+            try:
+                rows = []
+                for line in report_file.read_text(errors="replace").splitlines():
+                    if line.strip():
+                        try:
+                            rows.append(json.loads(line))
+                        except json.JSONDecodeError:
+                            continue
+                hits = sum(int(row.get("fails", 0)) for row in rows if row.get("entry_type") == "eval")
+                garak_statuses.append({"target": name, "status": "completed", "detector_hits": hits})
+                if hits:
+                    findings.append({"severity": "medium", "rule": "garak-detector-hit", "evidence": f"Garak recorded {hits} detector hit(s) against DVAA {name}; inspect the detailed report and detector context."})
+            except (OSError, json.JSONDecodeError, ValueError):
+                garak_statuses.append({"target": name, "status": "report_unreadable"})
+        else:
+            garak_statuses.append({"target": name, "status": "report_missing"})
+    runtime["garak"] = garak_statuses
+    if suite_status != "completed":
+        findings.append({"severity": "medium", "rule": "dvaa-exhaustive-suite-incomplete", "evidence": error or "The exhaustive DVAA workflow did not complete successfully; inspect its logs."})
+    return findings, runtime
 
 
 def markdown_report(report: dict[str, Any]) -> str:
@@ -431,10 +681,15 @@ def main(argv: list[str] | None = None) -> int:
                 print(json.dumps(plan, indent=2) if args.json else markdown_report({**plan, "generated_at": datetime.now(timezone.utc).isoformat(), "mode": "offline plan"}))
                 return 0
             findings = scan_repository(source, target, info)
+            runtime: dict[str, Any] = {"text_files_reviewed": len(info["files"]), "manifests": info["manifests"],
+                                       "application_started": False}
+            if info["dvaa"] and source.resolve() == (here / ".targets" / "dvaa").resolve():
+                suite_findings, suite_runtime = run_dvaa_suite(source, args.timeout)
+                findings.extend(suite_findings)
+                runtime.update(suite_runtime)
             report = {"version": VERSION, "kind": "repository", "target": display_target(target), "generated_at": datetime.now(timezone.utc).isoformat(),
-                      "mode": "static source scan", "signals": plan["signals"], "plan": plan,
-                      "findings": findings, "runtime": {"text_files_reviewed": len(info["files"]), "manifests": info["manifests"],
-                                                          "application_started": False}}
+                      "mode": "exhaustive DVAA lab scan" if runtime.get("dvaa_exhaustive_suite") else "static source scan",
+                      "signals": plan["signals"], "plan": plan, "findings": findings, "runtime": runtime}
             if temp_context:
                 temp_context.cleanup()
         json_path, md_path = write_report(report, args.output_dir)

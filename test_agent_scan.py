@@ -11,6 +11,8 @@ class PlannerTests(unittest.TestCase):
         selected = {item["id"] for item in plan["selected"]}
         skipped = {item["id"] for item in plan["skipped"]}
         self.assertIn("bounded-chat-safety", selected)
+        self.assertIn("mcp-discovery", selected)
+        self.assertIn("a2a-discovery", selected)
         self.assertIn("garak", skipped)
         self.assertIn("promptfoo", skipped)
 
@@ -18,6 +20,21 @@ class PlannerTests(unittest.TestCase):
         plan = agent_scan.plan_for_url("https://example.test/", {"garak": None, "promptfoo": None})
         self.assertNotIn("bounded-chat-safety", {item["id"] for item in plan["selected"]})
         self.assertTrue(any(item["id"] == "llm-redteam" for item in plan["skipped"]))
+        self.assertIn("mcp-discovery", {item["id"] for item in plan["selected"]})
+        self.assertIn("a2a-discovery", {item["id"] for item in plan["selected"]})
+
+    def test_preconfigured_dvaa_plan_runs_protocol_and_runtime_suite(self):
+        root = Path(agent_scan.__file__).resolve().parent / ".targets" / "dvaa"
+        if not root.is_dir():
+            self.skipTest("preconfigured DVAA checkout is absent")
+        plan, info = agent_scan.plan_for_repo(root, str(root), {"semgrep": None})
+        selected = {item["id"] for item in plan["selected"]}
+        skipped = {item["id"] for item in plan["skipped"]}
+        self.assertTrue(info["dvaa"])
+        self.assertIn("dvaa-exhaustive-suite", selected)
+        self.assertNotIn("runtime-redteam", skipped)
+        self.assertNotIn("mcp-protocol-tests", skipped)
+        self.assertNotIn("a2a-protocol-tests", skipped)
 
     def test_repo_planner_detects_agent_surface_and_secret_redacts_value(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-10-17T08:00:46.530677+00:00",
+  "timestamp": "2026-10-17T08:31:47.346741+00:00",
   "scope": "4 MCP endpoints and 2 A2A endpoints; bounded local-only requests",
   "total": 18,
   "findings": 12,
@@ -157,14 +157,6 @@
                     "type": "string"
                   }
                 }
-              }
-            },
-            {
-              "name": "redteam_readonly_probe",
-              "description": "local scan probe",
-              "inputSchema": {
-                "type": "object",
-                "properties": {}
               }
             }
           ]
@@ -416,7 +408,7 @@
       "status": 403,
       "result": "no_finding_observed",
       "response": {
-        "taskId": "task-1792224046529",
+        "taskId": "task-1792225907345",
         "status": "rejected",
         "from": "orchestrator",
         "to": "redteam-unauthorized",
@@ -429,7 +421,7 @@
       "status": 200,
       "result": "finding",
       "response": {
-        "taskId": "task-1792224046530",
+        "taskId": "task-1792225907346",
         "status": "accepted",
         "from": "orchestrator",
         "to": "redteam-unauthorized",
@@ -443,7 +435,7 @@
       "status": 403,
       "result": "no_finding_observed",
       "response": {
-        "taskId": "task-1792224046530",
+        "taskId": "task-1792225907346",
         "status": "rejected",
         "from": "worker-1",
         "to": "redteam-unauthorized",
@@ -456,7 +448,7 @@
       "status": 200,
       "result": "finding",
       "response": {
-        "taskId": "task-1792224046530",
+        "taskId": "task-1792225907346",
         "status": "executed",
         "from": "worker-1",
         "to": "redteam-unauthorized",

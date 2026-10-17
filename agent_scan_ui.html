@@ -1,0 +1,390 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Agent Scan Workbench</title>
+  <style>
+    :root { --ink:#15211f; --muted:#65736f; --line:#dce5e1; --paper:#f5f8f6; --white:#fff; --green:#126e57; --green2:#dff3eb; --amber:#80550d; --amber2:#fff3d8; --red:#a83f37; --red2:#fff0ee; --shadow:0 14px 42px rgba(20,48,39,.08); }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--paper); color:var(--ink); font:15px/1.5 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+    .top { background:#10231f; color:#eff8f4; border-bottom:1px solid #29443c; }
+    .top-inner { max-width:1160px; margin:auto; padding:17px 28px; display:flex; align-items:center; gap:12px; }
+    .brand { display:grid; place-items:center; width:34px; height:34px; border-radius:11px; background:#c8f0dc; color:#14513e; font-weight:850; letter-spacing:-1px; }
+    .brand-name { font-weight:700; letter-spacing:.01em; }
+    .local-tag { margin-left:auto; border:1px solid #44645a; border-radius:999px; padding:5px 10px; color:#cae4da; font-size:12px; }
+    main { max-width:1160px; padding:44px 28px 72px; margin:auto; }
+    .intro { max-width:780px; margin-bottom:27px; }
+    .eyebrow { color:var(--green); text-transform:uppercase; font-size:11px; font-weight:800; letter-spacing:.13em; }
+    h1 { margin:8px 0 10px; font-size:clamp(30px,4vw,43px); letter-spacing:-.045em; line-height:1.08; }
+    .intro p { color:var(--muted); margin:0; font-size:16px; max-width:680px; }
+    .workspace { display:grid; grid-template-columns:minmax(0,1.55fr) minmax(275px,.75fr); gap:19px; align-items:start; }
+    .panel { background:var(--white); border:1px solid var(--line); border-radius:17px; box-shadow:var(--shadow); }
+    .panel-pad { padding:23px; }
+    .panel h2 { margin:0 0 5px; font-size:17px; letter-spacing:-.02em; }
+    .sub { color:var(--muted); margin:0 0 19px; font-size:13px; }
+    label { display:block; font-size:13px; font-weight:700; margin:0 0 7px; }
+    .input-row { display:flex; gap:9px; }
+    input[type=text] { width:100%; min-width:0; height:46px; border:1px solid #cbd8d2; border-radius:10px; padding:0 13px; color:var(--ink); font:inherit; outline:none; }
+    input[type=text]:focus { border-color:#299473; box-shadow:0 0 0 3px #dff3eb; }
+    button { border:0; border-radius:10px; background:var(--green); color:white; min-height:44px; padding:0 17px; font-family:inherit; font-size:13px; font-weight:700; cursor:pointer; transition:transform .12s,background .12s; white-space:nowrap; }
+    button:hover:not(:disabled) { background:#0e5b48; transform:translateY(-1px); }
+    button:disabled { opacity:.45; cursor:not-allowed; }
+    .button-secondary { background:#e9f2ee; color:#1a5c49; }
+    .button-secondary:hover:not(:disabled) { background:#dcece5; }
+    .tip { min-height:20px; margin:8px 0 17px; color:var(--muted); font-size:12px; }
+    .options { border-top:1px solid #edf1ef; padding-top:16px; display:grid; grid-template-columns:1fr 1fr; gap:13px; }
+    .checkline { grid-column:1/-1; display:flex; gap:9px; align-items:flex-start; border-radius:10px; background:#f7f9f8; padding:11px 12px; }
+    .checkline input { margin:3px 0 0; accent-color:var(--green); }
+    .checkline label { margin:0; font-weight:600; }
+    .checkline small { display:block; color:var(--muted); font-size:11px; font-weight:400; margin-top:2px; }
+    .field-help { display:block; color:var(--muted); font-size:11px; margin-top:4px; }
+    .form-actions { display:flex; align-items:center; gap:10px; margin-top:17px; }
+    .status { color:var(--muted); font-size:12px; min-width:0; }
+    .notice { display:none; border-radius:10px; padding:11px 13px; margin-top:15px; font-size:13px; }
+    .notice.error { display:block; color:#8a302a; background:var(--red2); border:1px solid #f0cbc7; }
+    .notice.info { display:block; color:#245947; background:var(--green2); border:1px solid #c6e9d8; }
+    .plan { margin-top:18px; }
+    .plan-head,.result-head { display:flex; justify-content:space-between; gap:12px; align-items:center; margin-bottom:12px; }
+    .pill { display:inline-flex; align-items:center; gap:6px; background:#edf3f0; color:#48625a; border-radius:999px; padding:4px 9px; font-size:11px; font-weight:700; }
+    .plan-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+    .plan-box { border:1px solid var(--line); background:#fcfdfc; border-radius:12px; padding:13px; }
+    .plan-box h3 { margin:0 0 9px; display:flex; align-items:center; gap:7px; font-size:12px; text-transform:uppercase; letter-spacing:.07em; color:#38584c; }
+    .plan-box.skips h3 { color:#80612c; }
+    .plan-item { border-top:1px solid #edf1ef; padding:9px 0 1px; }
+    .plan-item strong { display:block; font-size:13px; }
+    .plan-item span { display:block; color:var(--muted); font-size:12px; margin-top:2px; }
+    .empty { color:var(--muted); font-size:12px; padding:4px 0 2px; }
+    .side { display:grid; gap:16px; }
+    .side .panel-pad { padding:20px; }
+    .guide { border-left:3px solid #72b79a; padding-left:12px; margin-top:14px; }
+    .guide strong { display:block; font-size:13px; margin-bottom:3px; }
+    .guide p { margin:0; color:var(--muted); font-size:12px; }
+    .history { display:grid; gap:0; margin-top:10px; }
+    .history-row { border-top:1px solid #edf1ef; padding:10px 0; display:flex; justify-content:space-between; gap:8px; font-size:12px; }
+    .history-row a { color:#17684f; text-decoration:none; }
+    .history-row a:hover { text-decoration:underline; }
+    .history-row button { min-height:29px; padding:0 9px; border-radius:7px; font-size:11px; }
+    .result { margin-top:20px; }
+    .stats { display:grid; grid-template-columns:repeat(4,1fr); gap:9px; margin:14px 0 18px; }
+    .stat { padding:12px; background:#f7f9f8; border:1px solid #e8eeeb; border-radius:11px; }
+    .stat b { display:block; font-size:23px; letter-spacing:-.04em; }
+    .stat span { display:block; color:var(--muted); font-size:11px; }
+    .viz-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:10px 0 20px; }
+    .viz-card { border:1px solid var(--line); background:#fcfdfc; border-radius:12px; padding:15px; min-width:0; }
+    .viz-card h3 { margin:0 0 3px; font-size:13px; }
+    .viz-note { color:var(--muted); font-size:11px; margin:0 0 13px; }
+    .bar-row { display:grid; grid-template-columns:74px 1fr 25px; gap:8px; align-items:center; margin:9px 0; font-size:11px; }
+    .bar-track { height:8px; background:#edf1ef; overflow:hidden; border-radius:99px; }
+    .bar-fill { height:100%; min-width:0; border-radius:99px; background:#76aa91; }
+    .bar-fill.high,.bar-fill.critical { background:#d46e62; }
+    .bar-fill.medium { background:#daa846; }
+    .bar-fill.low { background:#69a989; }
+    .bar-count { text-align:right; font-weight:700; color:#42544d; }
+    .plan-ratio { display:flex; height:13px; overflow:hidden; border-radius:99px; background:#edf1ef; margin:15px 0 10px; }
+    .plan-ratio .done { background:#4b9a78; }
+    .plan-ratio .deferred { background:#e0b65e; }
+    .legend { display:flex; gap:13px; flex-wrap:wrap; color:var(--muted); font-size:11px; }
+    .legend span { display:inline-flex; gap:5px; align-items:center; }
+    .legend i { display:inline-block; width:8px; height:8px; border-radius:50%; background:#4b9a78; }
+    .legend .amber { background:#e0b65e; }
+    .signals { display:flex; gap:6px; flex-wrap:wrap; margin-top:10px; }
+    .signal-chip { border:1px solid #d9e8e0; background:#f0f7f3; color:#35644e; border-radius:999px; padding:4px 8px; font-size:11px; }
+    .gap-section { margin:16px 0 20px; padding:15px; border:1px solid #efdfb9; background:#fffbf1; border-radius:12px; }
+    .gap-section h3 { margin:0 0 4px; font-size:14px; color:#73561d; }
+    .gap-intro { color:#806e4b; font-size:11px; margin:0 0 8px; }
+    .gap-item { display:grid; grid-template-columns:18px 1fr; gap:8px; padding:9px 0; border-top:1px solid #f0e7d3; }
+    .gap-icon { color:#9d721e; font-weight:800; }
+    .gap-item strong { display:block; font-size:12px; }
+    .gap-item p { color:#736b5a; font-size:11px; margin:2px 0 0; }
+    .section-title { margin:18px 0 3px; font-size:16px; }
+    .finding { border-top:1px solid #edf1ef; padding:12px 0; display:grid; grid-template-columns:74px 1fr; gap:10px; }
+    .severity { align-self:start; text-align:center; border-radius:999px; padding:3px 8px; text-transform:uppercase; font-size:10px; font-weight:800; }
+    .severity.high,.severity.critical { background:#ffe5e2; color:#9a342d; }
+    .severity.medium { background:#fff1d3; color:#7d590f; }
+    .severity.low,.severity.info { background:#e8f1ed; color:#48655b; }
+    .finding strong { font-size:13px; }
+    .finding p { color:var(--muted); font-size:12px; margin:3px 0 0; overflow-wrap:anywhere; }
+    .report-links { display:flex; gap:8px; flex-wrap:wrap; margin-top:14px; }
+    .report-links a { display:inline-flex; color:#145f49; background:#e8f3ee; border-radius:8px; padding:7px 10px; font-size:12px; text-decoration:none; }
+    .loader { display:inline-block; width:13px; height:13px; border:2px solid #b9d9ca; border-top-color:#17684f; border-radius:50%; animation:spin .7s linear infinite; vertical-align:-2px; margin-right:5px; }
+    @keyframes spin { to { transform:rotate(360deg); } }
+    @media (max-width:850px) { .workspace { grid-template-columns:1fr; } .side { grid-template-columns:1fr 1fr; } }
+    @media (max-width:600px) { main { padding:32px 16px 54px; } .top-inner { padding:14px 16px; } .panel-pad { padding:17px; } .input-row { flex-direction:column; } .options,.plan-grid,.viz-grid { grid-template-columns:1fr; } .side { grid-template-columns:1fr; } .stats { grid-template-columns:1fr 1fr; } }
+  </style>
+</head>
+<body>
+  <header class="top"><div class="top-inner"><div class="brand">AS</div><div class="brand-name">Agent Scan</div><div class="local-tag">● Local workspace</div></div></header>
+  <main>
+    <section class="intro">
+      <div class="eyebrow">Security assessment</div>
+      <h1>Agent scan workbench</h1>
+      <p>Enter an agent URL or code repository. The planner identifies the exposed surface, chooses compatible checks, and explains what needs more setup.</p>
+    </section>
+    <div class="workspace">
+      <section class="panel panel-pad">
+        <h2>Target</h2>
+        <p class="sub">Start with a running endpoint, a GitHub repository, or a local checkout.</p>
+        <label for="target">URL or repository path</label>
+        <div class="input-row"><input id="target" type="text" autocomplete="off" spellcheck="false" placeholder="https://…/v1/chat/completions  ·  https://github.com/org/repo  ·  /path/to/repo"><button id="planBtn" class="button-secondary">Build scan plan</button></div>
+        <div class="tip" id="targetTip">Planning is offline. It will not contact a URL or clone a repository.</div>
+        <div class="options">
+          <div class="checkline"><input id="authorized" type="checkbox"><label for="authorized">I am authorized to scan this remote target<small>Required before the UI will run a scan against a public URL or remote repository.</small></label></div>
+          <div><label for="apiKeyEnv">API key environment variable</label><input id="apiKeyEnv" type="text" placeholder="OPENAI_API_KEY"><span class="field-help">Enter a variable name only. The key itself stays in your shell environment.</span></div>
+          <div><label for="model">Model name</label><input id="model" type="text" value="gpt-4o-mini"><span class="field-help">Used for compatible chat endpoints.</span></div>
+        </div>
+        <div class="form-actions"><button id="scanBtn" disabled>Run selected checks</button><span class="status" id="status">Build a plan to see which checks fit.</span></div>
+        <div id="notice" class="notice"></div>
+        <div id="plan" class="plan" hidden></div>
+        <div id="result" class="result" hidden></div>
+      </section>
+      <aside class="side">
+        <section class="panel panel-pad">
+          <h2>How the planner decides</h2>
+          <p class="sub">Checks depend on what the target exposes.</p>
+          <div class="guide"><strong>Code repository</strong><p>Chooses local source and configuration checks. Runtime tests wait for a running service URL.</p></div>
+          <div class="guide"><strong>Chat completion URL</strong><p>Chooses HTTP surface checks and two bounded prompt-handling probes.</p></div>
+          <div class="guide"><strong>Other URL</strong><p>Checks the HTTP surface and skips model prompts until a chat interface is identified.</p></div>
+        </section>
+        <section class="panel panel-pad">
+          <h2>Recent reports</h2><p class="sub">Saved locally in <code>agent-scan-results/</code>.</p>
+          <div id="history" class="history"><div class="empty">Loading reports…</div></div>
+        </section>
+      </aside>
+    </div>
+  </main>
+<script>
+  const $ = (id) => document.getElementById(id);
+  let currentPlan = null;
+  let pollTimer = null;
+
+  function node(tag, cls, text) {
+    const item = document.createElement(tag);
+    if (cls) item.className = cls;
+    if (text !== undefined) item.textContent = text;
+    return item;
+  }
+  async function request(path, body) {
+    const options = body === undefined ? {} : { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) };
+    const response = await fetch(path, options);
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
+    return data;
+  }
+  function showNotice(message, kind='info') {
+    const box = $('notice'); box.className = `notice ${kind}`; box.textContent = message;
+  }
+  function clearNotice() { $('notice').className = 'notice'; $('notice').textContent = ''; }
+  function renderList(box, title, items, emptyText, icon) {
+    const section = node('div', `plan-box ${title === 'Skipped' ? 'skips' : ''}`);
+    section.append(node('h3', '', `${icon} ${title}`));
+    if (!items || !items.length) section.append(node('div', 'empty', emptyText));
+    for (const item of items || []) {
+      const row = node('div', 'plan-item'); row.append(node('strong', '', item.id)); row.append(node('span', '', item.reason)); section.append(row);
+    }
+    box.append(section);
+  }
+  function renderPlan(plan) {
+    currentPlan = plan;
+    const root = $('plan'); root.replaceChildren(); root.hidden = false;
+    const head = node('div', 'plan-head'); head.append(node('h2', '', 'Recommended scan plan'));
+    head.append(node('span', 'pill', `${plan.kind} · ${plan.signals?.join(' / ') || 'surface identified'}`)); root.append(head);
+    const grid = node('div', 'plan-grid');
+    renderList(grid, 'Selected', plan.selected, 'No checks selected for this target.', '✓');
+    renderList(grid, 'Skipped', plan.skipped, 'No checks skipped.', '↷'); root.append(grid);
+    if (plan.authorization) root.append(node('p', 'field-help', plan.authorization));
+    $('scanBtn').disabled = false;
+    $('status').textContent = 'Review the plan, then run the selected checks.';
+  }
+  async function buildPlan() {
+    clearNotice(); $('scanBtn').disabled = true; $('status').innerHTML = '<span class="loader"></span>Inspecting target type…';
+    $('plan').hidden = true; $('result').hidden = true;
+    try { renderPlan(await request('/api/plan', {target:$('target').value})); }
+    catch (error) { $('status').textContent = 'Plan unavailable.'; showNotice(error.message, 'error'); }
+  }
+  function renderResult(payload) {
+    const report = payload.report || payload;
+    const root = $('result'); root.replaceChildren(); root.hidden = false;
+    const findings = report.findings || [];
+    const selected = report.plan?.selected || [];
+    const skipped = report.plan?.skipped || [];
+    const severity = {critical:0,high:0,medium:0,low:0,info:0};
+    const rules = new Map();
+    findings.forEach(f => {
+      const key=(f.severity||'info').toLowerCase(); severity[key]=(severity[key]||0)+1;
+      rules.set(f.rule||'other',(rules.get(f.rule||'other')||0)+1);
+    });
+    const head = node('div','result-head');
+    const title=node('div'); title.append(node('h2','','Scan report'));
+    title.append(node('p','field-help',`${report.target || 'Target'} · ${report.generated_at || ''}`));
+    head.append(title); head.append(node('span','pill',report.mode || 'Completed')); root.append(head);
+
+    const stats=node('div','stats');
+    [['Findings',findings.length],['High / critical',(severity.high||0)+(severity.critical||0)],['Checks selected',selected.length],['Gaps / skipped',skipped.length]].forEach(([label,value])=>{
+      const card=node('div','stat');card.append(node('b','',String(value)));card.append(node('span','',label));stats.append(card);
+    });
+    root.append(stats);
+
+    const visuals=node('div','viz-grid');
+    const sevCard=node('section','viz-card');
+    sevCard.append(node('h3','','Potential findings by severity')); sevCard.append(node('p','viz-note','Heuristic matches need review before treating them as confirmed issues.'));
+    const maxSeverity=Math.max(1,...Object.values(severity));
+    ['critical','high','medium','low','info'].forEach(level=>{
+      const row=node('div','bar-row'); row.append(node('span','',level.charAt(0).toUpperCase()+level.slice(1)));
+      const track=node('div','bar-track'); const fill=node('div',`bar-fill ${level}`); fill.style.width=`${(severity[level]||0)/maxSeverity*100}%`; track.append(fill); row.append(track); row.append(node('span','bar-count',String(severity[level]||0))); sevCard.append(row);
+    });
+    visuals.append(sevCard);
+
+    const planCard=node('section','viz-card');
+    planCard.append(node('h3','','Plan decisions'));
+    planCard.append(node('p','viz-note','Checks selected to run and checks that need separate setup. This is plan status, not a security coverage score.'));
+    const total=selected.length+skipped.length; const ratio=node('div','plan-ratio'); ratio.setAttribute('role','img'); ratio.setAttribute('aria-label',`Plan decisions: ${selected.length} selected and ${skipped.length} deferred.`);
+    const done=node('div','done'); done.style.width=`${total ? selected.length/total*100 : 0}%`;
+    const deferred=node('div','deferred'); deferred.style.width=`${total ? skipped.length/total*100 : 0}%`;
+    ratio.append(done,deferred); planCard.append(ratio);
+    const legend=node('div','legend');
+    const selectedLegend=node('span'); selectedLegend.append(node('i'),document.createTextNode(`${selected.length} selected`));
+    const skippedLegend=node('span'); skippedLegend.append(node('i','amber'),document.createTextNode(`${skipped.length} deferred`));
+    legend.append(selectedLegend,skippedLegend); planCard.append(legend);
+    if (report.signals?.length) {
+      const chips=node('div','signals'); report.signals.forEach(signal=>chips.append(node('span','signal-chip',signal))); planCard.append(chips);
+    }
+    visuals.append(planCard); root.append(visuals);
+
+    const failedRuntime=(report.runtime?.bounded_chat_checks||[]).filter(c=>c.status!=='completed');
+    if (skipped.length || failedRuntime.length) {
+      const gaps=node('section','gap-section'); gaps.append(node('h3','','Gaps identified'));
+      gaps.append(node('p','gap-intro','These checks were not completed. Each item names what is missing or why the scan deferred it.'));
+      skipped.forEach(item=>{
+        const row=node('div','gap-item'); row.append(node('span','gap-icon','↗'));
+        const body=node('div'); body.append(node('strong','',item.id)); body.append(node('p','',item.reason)); row.append(body); gaps.append(row);
+      });
+      failedRuntime.forEach(check=>{
+        const row=node('div','gap-item'); row.append(node('span','gap-icon','!'));
+        const body=node('div'); body.append(node('strong','',`${check.id} did not complete`)); body.append(node('p','',check.error||`HTTP ${check.http_status||'error'}`)); row.append(body); gaps.append(row);
+      });
+      root.append(gaps);
+    } else {
+      root.append(node('p','empty','No plan gaps were recorded.'));
+    }
+
+    if (rules.size) {
+      const ruleCard=node('section','viz-card'); ruleCard.append(node('h3','','Most frequent finding rules'));
+      ruleCard.append(node('p','viz-note','Repeated matches can come from the same underlying pattern.'));
+      const sortedRules=[...rules.entries()].sort((a,b)=>b[1]-a[1]).slice(0,8); const maxRule=sortedRules[0][1];
+      sortedRules.forEach(([rule,count])=>{
+        const row=node('div','bar-row'); row.append(node('span','',rule));
+        const track=node('div','bar-track'); const fill=node('div','bar-fill'); fill.style.width=`${count/maxRule*100}%`; track.append(fill); row.append(track); row.append(node('span','bar-count',String(count))); ruleCard.append(row);
+      });
+      root.append(ruleCard);
+    }
+
+    root.append(node('h2','section-title','Finding details'));
+    if (!findings.length) root.append(node('p','empty','No findings from the selected checks. Review the gaps above to see what remains untested.'));
+    findings.forEach(finding => {
+      const row=node('div','finding'); row.append(node('span',`severity ${(finding.severity||'info').toLowerCase()}`,finding.severity||'info'));
+      const body=node('div'); body.append(node('strong','',`${finding.rule}${finding.file ? ` · ${finding.file}:${finding.line||''}` : ''}`));
+      body.append(node('p','',finding.evidence || finding.note || '')); if (finding.note) body.append(node('p','',finding.note)); row.append(body); root.append(row);
+    });
+    if (report.runtime?.bounded_chat_checks) {
+      root.append(node('h2','section-title','Chat checks'));
+      report.runtime.bounded_chat_checks.forEach(check=>{
+        const row=node('div','finding'); row.append(node('span',`severity ${check.canary_observed?'high':'info'}`,check.canary_observed?'signal':'checked'));
+        const body=node('div'); body.append(node('strong','',check.id));
+        body.append(node('p','',check.status==='completed' ? `${check.response_characters} response characters · ${check.refusal_like?'refusal wording seen':'no common refusal wording detected'}` : (check.error||`HTTP ${check.http_status||'error'}`))); row.append(body); root.append(row);
+      });
+    }
+    const protocols=[['MCP',report.runtime?.mcp_checks||[]],['A2A',report.runtime?.a2a_checks||[]]];
+    const testedProtocols=protocols.filter(([,checks])=>checks.length);
+    if (testedProtocols.length) {
+      root.append(node('h2','section-title','Protocol and runtime checks'));
+      testedProtocols.forEach(([label,checks])=>{
+        const card=node('section','viz-card'); card.append(node('h3','',`${label} checks`));
+        const counts=checks.reduce((acc,c)=>{const state=c.status||c.result||'unknown';acc[state]=(acc[state]||0)+1;return acc;},{});
+        card.append(node('p','viz-note',`${checks.length} requests · ${Object.entries(counts).map(([k,v])=>`${v} ${k.replaceAll('_',' ')}`).join(' · ')}`));
+        checks.forEach(check=>{
+          const name=check.name||check.endpoint||check.card_url||`${label} endpoint`;
+          const state=check.status||check.result||'unknown';
+          const details=check.error||check.note||check.response?.error?.message||check.unknown_task_lookup?.reason||'';
+          const row=node('div','finding'); row.append(node('span',`severity ${state==='finding'||state==='detected'?'high':state==='error'?'medium':'info'}`,state.replaceAll('_',' ')));
+          const body=node('div'); body.append(node('strong','',name));
+          if (details) body.append(node('p','',String(details)));
+          if (check.inventory) body.append(node('p','',`Inventory: ${JSON.stringify(check.inventory)}`));
+          if (check.unknown_task_lookup) body.append(node('p','',`Unknown task lookup: ${JSON.stringify(check.unknown_task_lookup)}`));
+          row.append(body); card.append(row);
+        });
+        root.append(card);
+      });
+    }
+    if (report.runtime?.dvaa_exhaustive_suite) {
+      const suite=report.runtime.dvaa_exhaustive_suite;
+      root.append(node('h2','section-title','DVAA exhaustive suite'));
+      const card=node('section','viz-card');
+      card.append(node('p','viz-note',`Suite ${suite.status} · ${suite.duration_seconds||0}s · artifacts: ${suite.artifacts_directory||'unavailable'}`));
+      if (suite.error) card.append(node('p','field-help',suite.error));
+      const scanners=[['Promptfoo',report.runtime.promptfoo],['Garak',report.runtime.garak]];
+      scanners.forEach(([name,value])=>{if(value)card.append(node('p','',`${name}: ${Array.isArray(value)?value.map(v=>`${v.target} ${v.status}${v.detector_hits!==undefined?` · ${v.detector_hits} hits`:''}`).join(' | '):`${value.status} · ${value.passed??0} passed · ${value.failed_assertions??value.failed??0} assertion failures · ${value.no_output??0} empty · ${value.total??0} total`}`));});
+      const selftest=report.runtime.dvaa_selftest;
+      if (selftest?.total!==undefined) card.append(node('p','',`Built-in matrix: ${selftest.pwned} attack outcomes · ${selftest.blocked} blocked · ${selftest.weakSignal} weak signals · ${selftest.inconclusive} inconclusive / ${selftest.total} total`));
+      if (suite.summary_file) {
+        const link=node('a','', 'Open full DVAA summary'); link.href='/api/dvaa-summary'; link.target='_blank'; link.rel='noopener'; card.append(link);
+      }
+      root.append(card);
+    }
+    if (report.runtime?.application_started === false) root.append(node('p','field-help','Repository code was not started; this report contains static checks only.'));
+    if (payload.files) {
+      const links=node('div','report-links');
+      for (const [format,filename] of Object.entries(payload.files)) {
+        const link=node('a','',`Open ${format.toUpperCase()} report`); link.href=`/api/reports/${encodeURIComponent(filename.split('/').pop())}`; link.target='_blank'; link.rel='noopener'; links.append(link);
+      }
+      root.append(links);
+    }
+    $('status').textContent=payload.files ? 'Scan complete. Reports were saved locally.' : 'Viewing saved report.';
+    $('scanBtn').disabled=!currentPlan;
+    $('planBtn').disabled=false;
+    root.scrollIntoView({behavior:'smooth',block:'start'});
+    if (payload.files) refreshHistory();
+  }
+  async function waitForJob(id) {
+    try {
+      const job=await request(`/api/jobs/${id}`);
+      if (job.status==='completed') { renderResult(job.result); return; }
+      if (job.status==='failed') { $('status').textContent='Scan failed.'; showNotice(job.error||'The scan failed.','error'); $('scanBtn').disabled=false; return; }
+      $('status').innerHTML=`<span class="loader"></span>${job.status==='queued'?'Waiting for scanner…':'Running selected checks…'}`;
+      pollTimer=setTimeout(()=>waitForJob(id),900);
+    } catch(error) { $('status').textContent='Could not read scan status.'; showNotice(error.message,'error'); $('scanBtn').disabled=false; }
+  }
+  async function startScan() {
+    clearNotice(); if (!currentPlan) return;
+    $('scanBtn').disabled=true; $('planBtn').disabled=true; $('result').hidden=true;
+    try {
+      const response=await request('/api/scan',{target:$('target').value,authorized:$('authorized').checked,
+        api_key_env:$('apiKeyEnv').value,model:$('model').value});
+      waitForJob(response.job_id);
+    } catch(error) { $('status').textContent='Scan not started.'; showNotice(error.message,'error'); $('scanBtn').disabled=false; }
+    finally { $('planBtn').disabled=false; }
+  }
+  async function refreshHistory() {
+    const box=$('history'); box.replaceChildren();
+    try {
+      const data=await request('/api/reports');
+      if (!data.reports.length) { box.append(node('div','empty','No reports yet.')); return; }
+      for (const report of data.reports) {
+        if (report.kind!=='markdown') continue;
+        const row=node('div','history-row'); const label=node('span','',report.name.replace(/^agent-scan-/,'')); row.append(label);
+        const view=node('button','button-secondary','View'); view.addEventListener('click',async()=>{
+          try { const saved=await request(`/api/reports/${encodeURIComponent(report.name.replace(/\.md$/,'.json'))}`); renderResult(saved); }
+          catch(error) { showNotice(`Could not load report: ${error.message}`,'error'); }
+        }); row.append(view); box.append(row);
+      }
+    } catch { box.append(node('div','empty','Could not load report history.')); }
+  }
+  $('planBtn').addEventListener('click',buildPlan);
+  $('scanBtn').addEventListener('click',startScan);
+  $('target').addEventListener('keydown',event=>{if(event.key==='Enter')buildPlan();});
+  $('target').addEventListener('input',()=>{currentPlan=null;$('scanBtn').disabled=true;$('plan').hidden=true;$('targetTip').textContent='Planning is offline. It will not contact a URL or clone a repository.';});
+  refreshHistory();
+</script>
+</body>
+</html>

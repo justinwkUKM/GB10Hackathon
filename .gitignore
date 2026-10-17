@@ -23,6 +23,7 @@ Thumbs.db
 redteam-results/*.jsonl
 redteam-results/*.log
 redteam-results/*.html
+agent-scan-results/
 
 # Temporary files
 *.tmp
