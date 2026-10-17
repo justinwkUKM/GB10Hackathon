@@ -18,7 +18,7 @@ const url = `http://localhost:${port}`;
 const child = spawnDemoTarget({ port, mode: "vulnerable" });
 
 try {
-	await waitForHealth(url);
+	await waitForHealth(`${url}/health`);
 	ok(true, "demo target answers /health");
 
 	const health = (await (await fetch(`${url}/health`)).json()) as { ok: boolean; mode: string };

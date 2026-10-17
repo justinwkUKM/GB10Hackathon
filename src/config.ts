@@ -26,6 +26,21 @@ function num(name: string, fallback: number): number {
 
 export interface HarnessConfig {
 	targetUrl: string;
+	/**
+	 * How to talk to the target. "demo" (default) is the bundled demo-target API
+	 * (POST /chat {conversationId,message} -> {response}). "openai" speaks the
+	 * OpenAI chat-completions API (POST <targetUrl> {messages} -> choices[0].message.content),
+	 * so the harness can point at any OpenAI-compatible agent (e.g. DVAA).
+	 */
+	targetProtocol: "demo" | "openai";
+	/** Health endpoint to wait on. Defaults to <targetUrl>/health. */
+	healthUrl: string;
+	/**
+	 * Path to a JSON file of pre-existing canaries to also hunt for, shape
+	 * {label,value,kind}[]. Lets the harness detect a target leaking its own
+	 * hardcoded secrets (targets we can't plant into). Empty = none.
+	 */
+	canaryFile: string;
 	scopeAllowlist: string[];
 	budgets: Record<string, number>;
 	brain: {
@@ -49,8 +64,12 @@ export interface HarnessConfig {
 export function loadConfig(overrides: Partial<HarnessConfig> = {}): HarnessConfig {
 	const thinking = env("BRAIN_THINKING_LEVEL", "high") as HarnessConfig["brain"]["thinkingLevel"];
 	const agentDir = resolve(PROJECT_ROOT, ".pi-agent");
+	const targetUrl = env("TARGET_URL", "http://localhost:8099");
 	const cfg: HarnessConfig = {
-		targetUrl: env("TARGET_URL", "http://localhost:8099"),
+		targetUrl,
+		targetProtocol: env("TARGET_PROTOCOL", "demo") === "openai" ? "openai" : "demo",
+		healthUrl: env("HEALTH_URL", `${targetUrl.replace(/\/$/, "")}/health`),
+		canaryFile: env("CANARY_FILE", ""),
 		scopeAllowlist: env("SCOPE_ALLOWLIST", "demo-target,localhost")
 			.split(",")
 			.map((s) => s.trim())
@@ -76,7 +95,14 @@ export function loadConfig(overrides: Partial<HarnessConfig> = {}): HarnessConfi
 		harnessWorkdir: resolve(PROJECT_ROOT, env("HARNESS_WORKDIR", ".pi-agent/workdir")),
 		agentDir,
 	};
-	return { ...cfg, ...overrides };
+	const merged = { ...cfg, ...overrides };
+	// If HEALTH_URL wasn't set explicitly and the (possibly overridden) targetUrl
+	// differs from the one healthUrl was derived from, re-derive it so callers that
+	// override targetUrl (e.g. the verify ladder) still probe the right port.
+	if (!process.env.HEALTH_URL && overrides.healthUrl === undefined) {
+		merged.healthUrl = `${merged.targetUrl.replace(/\/$/, "")}/health`;
+	}
+	return merged;
 }
 
 /**

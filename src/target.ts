@@ -14,7 +14,7 @@
 
 import { type ChildProcess, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { HarnessConfig } from "./config.ts";
 import { PROJECT_ROOT } from "./config.ts";
@@ -90,17 +90,43 @@ class HttpTargetClient implements TargetClient {
 	egressLog: string[] = [];
 	attackerSessionId = "user-1";
 	private child?: ChildProcess;
+	private protocol: "demo" | "openai";
+	private canaryFile: string;
+	// For the OpenAI protocol: message history per conversation, so multi-turn
+	// attacks carry context the way the demo-target's server-side memory does.
+	private history = new Map<string, { role: string; content: string }[]>();
 
 	constructor(cfg: HarnessConfig, targetId: string, child?: ChildProcess) {
 		this.targetUrl = cfg.targetUrl.replace(/\/$/, "");
 		this.targetId = targetId;
 		this.harnessWorkdir = cfg.harnessWorkdir;
+		this.protocol = cfg.targetProtocol;
+		this.canaryFile = cfg.canaryFile;
 		this.child = child;
 		mkdirSync(this.harnessWorkdir, { recursive: true });
 	}
 
 	async plantCanaries(): Promise<Canary[]> {
 		this.canaries = generateCanaries();
+		// Also hunt for pre-existing (hardcoded) secrets we were told about, for
+		// targets we can't plant into. Any of these appearing verbatim is a leak.
+		if (this.canaryFile && existsSync(this.canaryFile)) {
+			try {
+				const extra = JSON.parse(readFileSync(this.canaryFile, "utf8")) as Partial<Canary>[];
+				for (const c of extra) {
+					if (!c.value) continue;
+					this.canaries.push({
+						id: c.id ?? randomUUID(),
+						label: c.label ?? c.value.slice(0, 24),
+						value: c.value,
+						kind: (c.kind as Canary["kind"]) ?? "secret",
+						ownerId: c.ownerId,
+					});
+				}
+			} catch {
+				/* a malformed canary file must not abort the run */
+			}
+		}
 		// Persist durable run data out of the model's context.
 		writeFileSync(resolve(this.harnessWorkdir, "canaries.json"), JSON.stringify(this.canaries, null, 2));
 		await httpJson(`${this.targetUrl}/__plant__`, "POST", this.canaries).catch(() => undefined);
@@ -108,14 +134,19 @@ class HttpTargetClient implements TargetClient {
 	}
 
 	async sendToTarget(conversationId: string, message: string): Promise<TargetResponse> {
-		const chat = await httpJson(`${this.targetUrl}/chat`, "POST", {
-			conversationId,
-			message,
-			sessionId: this.attackerSessionId,
-		});
+		const chat =
+			this.protocol === "openai"
+				? await this.sendOpenAI(conversationId, message)
+				: await httpJson(`${this.targetUrl}/chat`, "POST", {
+						conversationId,
+						message,
+						sessionId: this.attackerSessionId,
+					});
 		const responseText: string = chat.json?.response ?? chat.text ?? "";
 
-		// Read instrumentation signals (behavior, not prose). Best-effort.
+		// Read instrumentation signals (behavior, not prose). Best-effort — an
+		// OpenAI-compatible target has no /__signals__, so these come back empty
+		// and only text-based verifiers (canary-token) fire, which is expected.
 		const sigRes = await httpJson(
 			`${this.targetUrl}/__signals__?conversationId=${encodeURIComponent(conversationId)}`,
 			"GET",
@@ -141,6 +172,24 @@ class HttpTargetClient implements TargetClient {
 		};
 		this.captures.push({ ts: new Date().toISOString(), conversationId, message, response: resp });
 		return resp;
+	}
+
+	/**
+	 * Send one message over the OpenAI chat-completions API, carrying the
+	 * conversation's prior turns. Returns the same {status,json,text} shape the
+	 * demo path uses, with json.response set to the assistant's reply text.
+	 */
+	private async sendOpenAI(
+		conversationId: string,
+		message: string,
+	): Promise<{ status: number; json: any; text: string }> {
+		const turns = this.history.get(conversationId) ?? [];
+		turns.push({ role: "user", content: message });
+		const chat = await httpJson(this.targetUrl, "POST", { model: this.targetId, messages: turns });
+		const reply: string = chat.json?.choices?.[0]?.message?.content ?? chat.text ?? "";
+		turns.push({ role: "assistant", content: reply });
+		this.history.set(conversationId, turns);
+		return { status: chat.status, json: { response: reply }, text: reply };
 	}
 
 	async runGarak(probeFamily: string): Promise<GarakSummary> {
@@ -207,13 +256,13 @@ export function spawnDemoTarget(opts: { port: number; mode: "vulnerable" | "hard
 	return child;
 }
 
-/** Wait until an HTTP health endpoint answers 200, or throw after timeout. */
-export async function waitForHealth(url: string, timeoutMs = 15_000): Promise<void> {
+/** Wait until the given health URL answers 200, or throw after timeout. */
+export async function waitForHealth(healthUrl: string, timeoutMs = 15_000): Promise<void> {
 	const deadline = Date.now() + timeoutMs;
 	let lastErr = "";
 	while (Date.now() < deadline) {
 		try {
-			const r = await httpJson(`${url}/health`, "GET", undefined, 2000);
+			const r = await httpJson(healthUrl, "GET", undefined, 2000);
 			if (r.status === 200) return;
 			lastErr = `status ${r.status}`;
 		} catch (e) {
@@ -221,7 +270,7 @@ export async function waitForHealth(url: string, timeoutMs = 15_000): Promise<vo
 		}
 		await new Promise((res) => setTimeout(res, 300));
 	}
-	throw new Error(`target at ${url} did not become healthy within ${timeoutMs}ms (${lastErr})`);
+	throw new Error(`target health at ${healthUrl} did not answer 200 within ${timeoutMs}ms (${lastErr})`);
 }
 
 /**
@@ -240,6 +289,6 @@ export async function connectTarget(
 		child = spawnDemoTarget({ port: Number(port), mode: opts.spawnDemo });
 	}
 	const client = new HttpTargetClient(cfg, opts.targetId ?? "demo-target", child);
-	await waitForHealth(client.targetUrl);
+	await waitForHealth(cfg.healthUrl);
 	return client;
 }
