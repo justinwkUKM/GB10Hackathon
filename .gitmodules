@@ -1,4 +1,4 @@
 [submodule "harness/redteam"]
 	path = harness/redteam
 	url = https://github.com/justinwkUKM/GB10Hackathon
-	branch = faris/harness_stuff
+	branch = harness-dvaa-fixes

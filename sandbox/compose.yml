@@ -35,14 +35,18 @@ services:
     user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
     networks: [net_target, models]
     environment:
-      VLLM_URL: ${VLLM_URL:-http://vllm:8000/v1}
-      TARGET_MANIFEST: /in/target.json
-      REPORT_PATH: /out/report.json
+      # Per-agent values (TARGET_URL, HEALTH_URL, TARGET_PROTOCOL, SCOPE_ALLOWLIST)
+      # are injected per invocation by the controller via `docker compose run -e`.
+      CANARY_FILE: /in/canaries.json
+      MODEL_BASE_URL: ${VLLM_URL:-http://vllm:8000/v1}
     volumes:
       # :z relabels for SELinux hosts (Fedora); a no-op elsewhere.
       - ${RUN_DIR:?RUN_DIR must be set}/in:/in:ro,z
-      - ${RUN_DIR}/out:/out:z
-    tmpfs: [/tmp]
+      - ${RUN_DIR}/out:/app/redteam/reports:z
+      - ${RUN_DIR}/src:/src:ro,z
+    tmpfs:
+      - /tmp
+      - /app/redteam/.pi-agent:uid=${HOST_UID:-1000},gid=${HOST_GID:-1000}
     mem_limit: 8g
     cpus: 8
     pids_limit: 512

@@ -2,6 +2,27 @@
 
 SANDBOX_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(dirname "$SANDBOX_DIR")"
+DASHBOARD_DIR="$ROOT_DIR/dashboard"
+STATUS_FILE="$DASHBOARD_DIR/status.json"
+
+# Default curated agent subset for the demo (hardened + a few vulnerable).
+AGENTS="${AGENTS:-securebot legacybot ragbot databot}"
+
+# status <args...> -- update the live dashboard (no-op if python is missing).
+status() {
+  python3 "$DASHBOARD_DIR/status.py" --file "$STATUS_FILE" "$@" 2>/dev/null || true
+}
+
+# agent_port <id> -- print the agent's port from the active target manifest.
+agent_port() {
+  python3 - "$1" "$MANIFEST" <<'EOF'
+import json, sys
+aid, m = sys.argv[1], json.load(open(sys.argv[2]))
+for a in m["agents"]:
+    if a["id"] == aid:
+        print(a["url"].rsplit(":", 1)[1]); break
+EOF
+}
 
 export SANDBOX_RUNTIME="${SANDBOX_RUNTIME:-runsc}"
 export MODELS_NETWORK="${MODELS_NETWORK:-dgx_models}"

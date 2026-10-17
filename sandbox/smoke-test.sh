@@ -61,15 +61,11 @@ expect_ok "agent chat endpoint answers (securebot :7001)" \
   probe wget -q -T 10 -O /dev/null --header 'Content-Type: application/json' \
     --post-data '{"messages":[{"role":"user","content":"hello"}]}' \
     http://target:7001/v1/chat/completions
-expect_ok "harness can reach the target" \
-  compose run --rm --no-deps harness python -c \
-    "import urllib.request; urllib.request.urlopen('http://target:9000/health', timeout=5)"
-expect_ok "harness can reach vLLM ($VLLM_URL)" \
-  compose run --rm --no-deps harness python -c \
-    "import urllib.request; urllib.request.urlopen('$VLLM_URL/models', timeout=5)"
-expect_fail "harness cannot reach the internet" \
-  compose run --rm --no-deps harness python -c \
-    "import urllib.request; urllib.request.urlopen('https://example.com', timeout=5)"
+# The harness image's entrypoint is the scan CLI, so override it to probe URLs.
+hnode() { compose run --rm --no-deps --entrypoint node harness -e "fetch(process.argv[1]).then(()=>process.exit(0)).catch(()=>process.exit(1))" "$1"; }
+expect_ok   "harness can reach the target"      hnode http://target:9000/health
+expect_ok   "harness can reach vLLM ($VLLM_URL)" hnode "$VLLM_URL/models"
+expect_fail "harness cannot reach the internet"  hnode https://example.com
 
 echo "== $failed check(s) failed"
 exit "$failed"
