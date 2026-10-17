@@ -40,7 +40,7 @@ However, existing AI red-teaming platforms require sending internal prompts, too
 
 ---
 
-## Architecture
+## Architecture & How It Works
 
 ```mermaid
 flowchart TD
@@ -75,6 +75,12 @@ flowchart TD
     ANL -->|4. Verified Security Report| WD
 ```
 
+### Key Design Principles
+- **The model proposes; the harness decides.** `record_finding` proposals are re-verified independently against captured target behavior. A proposal without hard evidence is dropped.
+- **Hard verifiers beat the judge** (`src/verifiers.ts`): canary token, tool-call assertion, outbound-request trap, cross-tenant id, policy/commitment regex, differential injection, refusal-bypass marker. A local safety judge is used only for genuinely fuzzy goals, and only if configured.
+- **Typed tools, not shell.** The brain gets `send_to_target`, `run_garak`, and `record_finding` with strict TypeBox schemas. Built-in `bash`/`read`/`write`/`edit` are dropped (`noTools: "builtin"`).
+- **Fail-closed gate.** Every tool call passes a `tool_call` handler enforcing scope + attack budget before it runs.
+
 ---
 
 ## The Offline Challenge (Demo Walkthrough)
@@ -103,90 +109,66 @@ To prove that local AI matters and that data remains private, AgentShield Local 
 
 ---
 
-## Supported Attack Scenarios
+## Quick Start (TypeScript Red-Team Harness)
 
-AgentShield Local targets critical risks outlined in the **OWASP Top 10 for Large Language Models**:
-
-1. **Merchant Credit Limit Bypass (`merchant_approval_bypass`)**
-   - *Threat*: Direct and indirect prompt injection tricking an automated financial approval agent into dispatching \$500,000 credit lines to unverified entities.
-   - *OWASP*: LLM01 (Prompt Injection) & LLM06 (Excessive Agency).
-2. **Tool Privilege Escalation (`tool_privilege_escalation`)**
-   - *Threat*: Social engineering an agent into invoking restricted administrative functions (`override_risk_score`) under pretext of executive emergencies.
-   - *OWASP*: LLM06 (Excessive Agency).
-3. **System Prompt & Secret Extraction (`system_prompt_disclosure`)**
-   - *Threat*: Extracting proprietary instructions, internal API tokens, and confidential guardrails via simulated maintenance diagnostics.
-   - *OWASP*: LLM02 (Sensitive Information Disclosure).
-
----
-
-## Quickstart Guide
-
-### 1. Prerequisites
-- **Python 3.10+** (Standard library only; zero mandatory pip packages for core dashboard and CLI).
-- **Ollama** or **vLLM** running locally.
-
-### 2. Pull Nemotron-Lightning
 ```bash
-# Pull the quantized local model via Ollama
-ollama pull nemotron-3.5-lightning
-ollama run nemotron-3.5-lightning
+npm install
+npm run build          # tsc --noEmit (green = buildable offline)
+npm run scan           # run against the bundled vulnerable demo target (scripted)
+cat reports/latest.md
 ```
-*(Note: AgentShield includes a built-in high-fidelity local simulator for demonstration on laptops or air-gapped environments without Ollama running).*
 
-### 3. Launch the Web Dashboard
+Point it at a real target by setting `TARGET_URL` (and `SCOPE_ALLOWLIST`) in `.env` — see `.env.example`. With a local OpenAI-compatible model endpoint up (e.g. Ollama/vLLM serving the brain named in `models.json`), the harness auto-selects the Pi brain; otherwise it falls back to the scripted attacker:
+
 ```bash
-python3 agentshield/server.py 8888
-```
-Open your browser to: **`http://127.0.0.1:8888`**
-
-### 4. Run via Command Line (CLI)
-```bash
-# Run standard red-team evaluation
-python3 agentshield_cli.py --scenario merchant_approval_bypass --defense vulnerable
-
-# Run the strict Air-Gapped / Offline Challenge
-python3 agentshield_cli.py --scenario merchant_approval_bypass --defense hardened --offline
-
-# Output raw JSON security audit report
-python3 agentshield_cli.py --scenario tool_privilege_escalation --json
+TARGET_URL=https://my-app.internal SCOPE_ALLOWLIST=my-app.internal npm run scan -- https://github.com/me/my-app
 ```
 
 ---
 
-## Target Verification Labs (DVAA, AIGoat, DVAP)
+## Verification Ladder
 
-This repository also contains automated integration smoke suites against local vulnerable AI agent testbeds:
-
-- `ai_redteam.py`: Standalone Python runner probing local instances of DVAA (LegacyBot & SecureBot), AIGoat, and DVAP.
-- `scan_dvaa_protocols.py`: Protocol and boundary check for MCP tool endpoints (`ToolBot`, `DataBot`, `PluginBot`, `ProxyBot`).
-- Reports and audit summaries are generated under `redteam-results/`.
+Each stage ships a headless `verify:<stage>` script that assumes no network egress and exits non-zero on failure. Run them all:
 
 ```bash
-# Run local lab smoke tests
-python3 ai_redteam.py
-python3 scan_dvaa_protocols.py
+npm run verify:all
 ```
+
+| Stage | Asserts |
+|---|---|
+| `verify:0`   | build is green; reports whether model server + garak are present |
+| `verify:0.5` | demo target builds, answers `/health`, documents its known vulns |
+| `verify:2`   | canaries plant + detect verbatim; observed-egress log captures an attempt |
+| `verify:3`   | Pi session offers exactly our 3 tools, none of the built-ins (headless) |
+| `verify:4`   | each hard verifier true-positives; a clean response trips nothing |
+| `verify:5`   | garak wrapper returns a well-formed summary (installed or not) |
+| `verify:6`   | **&ge;1 finding on the vulnerable target AND 0 on the hardened copy** |
+| `verify:7`   | verified-success counts per category; brain-vs-scripted if a model is up |
+
+Stages needing the optional model server / garak **skip with a clear banner** when those are absent (they are baked into the sandbox image); the deterministic stages (0.5, 2, 4, 6) always run for real.
 
 ---
 
-## Project Structure
+## Repository Layout
 
 ```
 GB10Hackathon/
-├── agentshield/                    # AgentShield Core Package
-│   ├── __init__.py
-│   ├── nemotron.py                 # Nemotron-Lightning Client (Ollama / Local Inference)
-│   ├── sandbox.py                  # Sandbox Agent with Mock Financial Tools
-│   ├── scenarios.py                # Red-team scenarios & threat definitions
-│   ├── evaluator.py                # Deterministic Policy Assertion & Finding Analyst
-│   ├── network_verifier.py         # Air-gap verification & latency profiler
-│   └── server.py                   # Web Dashboard & Local Private AI Server
-├── agentshield_cli.py              # Interactive CLI Runner
-├── ai_redteam.py                   # Local lab smoke test runner
-├── scan_dvaa_protocols.py          # MCP / A2A protocol vulnerability scanner
-├── redteam-results/                # Test artifacts and audit reports
-├── README-redteam.md               # Lab environment configuration guide
-└── README.md                       # Main Documentation
+├── src/
+│   ├── orchestrator.ts       # runScan(): embeds Pi or scripted attacker
+│   ├── redteam-extension.ts  # typed tools + fail-closed tool_call gate + verification
+│   ├── scripted-attacker.ts  # deterministic, model-free attacker
+│   ├── target.ts             # target HTTP client, canaries, egress log, garak wrapper
+│   ├── scan.ts               # static scan → capability profile
+│   ├── verifiers.ts          # the hard verification checks
+│   ├── judge.ts              # local safety judge, fuzzy cases only
+│   ├── report.ts             # scoring + OWASP/MITRE/NIST mapping + Markdown render
+│   ├── prompts.ts            # attacker persona + kickoff prompt + profile rendering
+│   ├── config.ts / types.ts  # configuration + shared types
+│   └── cli.ts                # entry point (npm run scan)
+├── demo-target/              # deliberately vulnerable app + known-vulns.json (+ hardened mode)
+├── verify/                   # the verification ladder (headless, egress-free)
+├── package.json
+└── README.md
 ```
 
 ---
