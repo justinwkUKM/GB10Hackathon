@@ -1,0 +1,60 @@
+# One compose project per run: `docker compose -p run_<RUN_ID> ...` (see controller.sh).
+# Both networks are internal, so nothing in the sandbox can reach the internet.
+#
+#   [vLLM, runc+GPU] --models-- [harness, runsc] --net_target-- [target, runsc]
+
+x-hardening: &hardening
+  runtime: ${SANDBOX_RUNTIME:-runsc}
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  read_only: true
+
+services:
+  target:
+    <<: *hardening
+    image: ${TARGET_IMAGE:?TARGET_IMAGE must be set}
+    networks: [net_target]
+    environment:
+      DVAA_HOST: 0.0.0.0
+      OPENA2A_TELEMETRY: "off"
+    # DVAA writes scores, AIM state and its fake "sandbox" filesystem here; uid 1000 = node.
+    tmpfs:
+      - /tmp:uid=1000,gid=1000,mode=1777
+      - /app/.dvaa:uid=1000,gid=1000
+      - /app/.dvaa-aim:uid=1000,gid=1000
+      - /home/node:uid=1000,gid=1000
+    mem_limit: 2g
+    cpus: 4
+    pids_limit: 256
+    # No ports: only the harness reaches it, at target:7001-7023 and target:9000.
+
+  harness:
+    <<: *hardening
+    image: ${HARNESS_IMAGE:-dgxhack/harness:latest}
+    build: ../harness
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    networks: [net_target, models]
+    environment:
+      # Per-agent values (TARGET_URL, HEALTH_URL, TARGET_PROTOCOL, SCOPE_ALLOWLIST)
+      # are injected per invocation by the controller via `docker compose run -e`.
+      CANARY_FILE: /in/canaries.json
+      MODEL_BASE_URL: ${VLLM_URL:-http://vllm:8000/v1}
+    volumes:
+      # :z relabels for SELinux hosts (Fedora); a no-op elsewhere.
+      - ${RUN_DIR:?RUN_DIR must be set}/in:/in:ro,z
+      - ${RUN_DIR}/out:/app/redteam/reports:z
+      - ${RUN_DIR}/src:/src:ro,z
+    tmpfs:
+      - /tmp
+      - /app/redteam/.pi-agent:uid=${HOST_UID:-1000},gid=${HOST_GID:-1000}
+    mem_limit: 8g
+    cpus: 8
+    pids_limit: 512
+
+networks:
+  net_target:
+    internal: true
+  models:
+    # Created once by setup-host.sh with --internal; the vLLM container is attached to it.
+    external: true
+    name: ${MODELS_NETWORK:-dgx_models}
