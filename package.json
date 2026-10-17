@@ -1,0 +1,34 @@
+{
+  "name": "redteam-harness",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Pi-based, local-first AI red-teaming harness. Stands a target up in a no-egress sandbox, attacks it with a local model as the brain, verifies with hard checks, and reports resiliency mapped to NIST/OWASP.",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "scan": "tsx src/cli.ts",
+    "demo-target": "tsx demo-target/server.ts",
+    "verify:0": "tsx verify/0-image.ts",
+    "verify:0.5": "tsx verify/0_5-demo.ts",
+    "verify:2": "tsx verify/2-canaries.ts",
+    "verify:3": "tsx verify/3-pi-model.ts",
+    "verify:4": "tsx verify/4-verifiers.ts",
+    "verify:5": "tsx verify/5-garak.ts",
+    "verify:6": "tsx verify/6-loop.ts",
+    "verify:7": "tsx verify/7-benchmark.ts",
+    "verify:all": "tsx verify/run-all.ts"
+  },
+  "dependencies": {
+    "@earendil-works/pi-coding-agent": "^1.3.0",
+    "typebox": "^1.3.27"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3"
+  }
+}

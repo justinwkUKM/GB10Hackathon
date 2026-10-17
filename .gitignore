@@ -1,3 +1,16 @@
+node_modules/
 runs/
 reports/
 dashboard/status.json
+.pi-agent/
+*.log
+.env
+.DS_Store
+
+# Virtual environments & external targets
+.venv/
+.venv*/
+venv/
+.targets/
+__pycache__/
+*.py[cod]
