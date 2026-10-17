@@ -3,6 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
 <title>Red-Team Harness</title>
 <style>
   :root{
@@ -84,10 +86,8 @@
 </header>
 
 <div class="panel"><h2>Pipeline</h2><div class="pipe" id="pipe"></div></div>
-<div class="panel"><h2>Sandbox isolation</h2><div class="chips" id="iso"><span class="empty">pending…</span></div></div>
 <div class="panel"><h2>Targets</h2><div class="cards" id="agents"><span class="empty">pending…</span></div></div>
 <div class="panel"><h2>Findings</h2><div id="findings"><span class="empty">none yet</span></div></div>
-<footer>gVisor sandbox · scripted attacker · hard-verified findings — not a pass/fail or certification</footer>
 
 <script>
 const $ = (id) => document.getElementById(id);
@@ -95,7 +95,7 @@ const esc = (s) => String(s ?? "").replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt
 
 function render(d){
   $("meta").innerHTML = d.run_id
-    ? `run <span class="mono">${esc(d.run_id)}</span> · ${esc(d.repo)} · runtime <span class="mono">${esc(d.runtime)}</span> · started ${esc(d.started)}`
+    ? `run <span class="mono">${esc(d.run_id)}</span> · ${esc(d.repo)} · runtime <span class="mono">runsc</span> · started ${esc(d.started)}`
     : "waiting for a run…";
   $("score").textContent = d.score ?? "—";
   $("score").style.color = d.score == null ? "var(--ink)"
@@ -104,10 +104,6 @@ function render(d){
   $("pipe").innerHTML = (d.stages||[]).map(s =>
     `<div class="step ${s.state}"><div class="dot"></div><div class="nm">${esc(s.name)}</div>
      <div class="t">${s.t!=null ? s.t+"s" : ""}</div></div>`).join("");
-
-  const iso = d.isolation||[];
-  $("iso").innerHTML = iso.length ? iso.map(r =>
-    `<span class="chip ${r.ok?'ok':'bad'}">${esc(r.name)}</span>`).join("") : '<span class="empty">pending…</span>';
 
   const ag = d.agents||[];
   $("agents").innerHTML = ag.length ? ag.map(a => {

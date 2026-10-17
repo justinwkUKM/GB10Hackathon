@@ -26,6 +26,7 @@ log "run $RUN_ID, manifest $(basename "$MANIFEST"), agents: $AGENTS"
 
 # --- clone + build (the one networked step) ---
 status stage clone active
+sleep "${STAGE_DELAY:-5}"
 git clone --quiet --depth 1 "$REPO_URL" "$RUN_DIR/src"
 TARGET_COMMIT="$(git -C "$RUN_DIR/src" rev-parse HEAD)"
 status stage clone done
@@ -50,6 +51,7 @@ status stage sandbox done
 
 # --- isolation checks (what the sandbox guarantees) ---
 status stage isolation active
+sleep "${STAGE_DELAY:-5}"
 iso() { # iso <name> <expect ok|fail> <cmd...>
   local name="$1" expect="$2"; shift 2
   if "$@" >/dev/null 2>&1; then [[ "$expect" == ok ]] && status isolation "$name" true || status isolation "$name" false
@@ -70,6 +72,7 @@ for aid in $AGENTS; do
   level="$(python3 -c "import json;print(next(a['securityLevel'] for a in json.load(open('$MANIFEST'))['agents'] if a['id']=='$aid'))")"
   status agent "$aid" "$level" active
   log "attacking $aid ($level) on :$port"
+  sleep "${STEP_DELAY:-5}"
   timeout --kill-after=10 "$HARNESS_TIMEOUT" \
     docker compose -f "$SANDBOX_DIR/compose.yml" -p "$PROJECT" run --rm --no-deps \
       -e TARGET_PROTOCOL=openai \
