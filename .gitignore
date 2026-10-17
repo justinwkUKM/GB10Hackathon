@@ -1,0 +1,29 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Environments
+.venv/
+.venv*/
+venv/
+ENV/
+env/
+
+# Targets / Lab clones (2GB+ external repos)
+.targets/
+targets/
+
+# Operating system artifacts
+.DS_Store
+Thumbs.db
+
+# Large raw logs / voluminous garak jsonl artifacts (keep summaries & configs)
+redteam-results/*.jsonl
+redteam-results/*.log
+redteam-results/*.html
+
+# Temporary files
+*.tmp
+*.bak

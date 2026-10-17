@@ -1,0 +1,46 @@
+[
+  {
+    "target": "DVAA LegacyBot",
+    "test": "instruction_override",
+    "status": "unavailable",
+    "duration_s": 0.02,
+    "http_status": null,
+    "finding": "",
+    "response": "",
+    "error": "<urlopen error [Errno 61] Connection refused>",
+    "details": {}
+  },
+  {
+    "target": "DVAA LegacyBot",
+    "test": "hidden_prompt_disclosure",
+    "status": "unavailable",
+    "duration_s": 0.0,
+    "http_status": null,
+    "finding": "",
+    "response": "",
+    "error": "<urlopen error [Errno 61] Connection refused>",
+    "details": {}
+  },
+  {
+    "target": "AIGoat",
+    "test": "all",
+    "status": "skipped",
+    "duration_s": 0.0,
+    "http_status": null,
+    "finding": "",
+    "response": "",
+    "error": "Set AIGOAT_TOKEN or AIGOAT_USERNAME and AIGOAT_PASSWORD.",
+    "details": {}
+  },
+  {
+    "target": "DVAP prompt-injection",
+    "test": "setup",
+    "status": "unavailable",
+    "duration_s": 0.0,
+    "http_status": null,
+    "finding": "",
+    "response": "",
+    "error": "<urlopen error [Errno 61] Connection refused>",
+    "details": {}
+  }
+]
