@@ -36,6 +36,8 @@ export interface RunOptions {
 }
 
 async function endpointReachable(baseUrl: string): Promise<boolean> {
+	// This probes connectivity only: an HTTP error still counts as reachable.
+	// Authentication/model failures are recorded later as attacker-loop errors.
 	try {
 		const ctrl = new AbortController();
 		const t = setTimeout(() => ctrl.abort(), 1500);
@@ -134,6 +136,8 @@ async function runModelBrain(cfg: HarnessConfig, cx: RedteamContext, profile: Pa
 	});
 
 	const transcript: unknown[] = [];
+	// In-memory Pi sessions do not prevent this explicit debug capture from being
+	// persisted. Treat the workdir as sensitive: events include prompts/responses.
 	const unsubscribe = session.subscribe((e) => transcript.push(e));
 	try {
 		await session.prompt(buildKickoffPrompt(profile, cx.target.canaries));

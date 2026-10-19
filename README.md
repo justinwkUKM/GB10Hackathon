@@ -81,6 +81,8 @@ export BRAIN_MODEL=your-served-model-id
 
 Set `JUDGE_BASE_URL`, `JUDGE_MODEL`, and optionally `JUDGE_API_KEY` only if you want a separate judge for fuzzy content checks. Hard verifiers still take precedence. If a model server is unreachable, `auto` mode uses the scripted attacker.
 
+`.env.example` lists the available settings, but the CLI does not load `.env` automatically. Export variables in your shell before starting it. The default model endpoint is `http://localhost:11434/v1`, with model ID `nemotron-3.5-lightning`. The reachability probe checks for an HTTP response, so an authentication error can still select model mode; model failures are recorded in report notes rather than retried with the scripted attacker.
+
 ## Isolated repository workflow
 
 This workflow is designed for a Linux host with Docker Compose v2, Python 3, `runsc` (gVisor), and a local OpenAI-compatible model server such as vLLM attached to an internal Docker network. `sandbox/setup-host.sh` uses `sudo` and systemd when it needs to install or register gVisor, so review and run it on the intended host.
@@ -148,6 +150,23 @@ SANDBOX.md              Concise operational notes for the isolated workflow
 ```
 
 ## Scope and safe use
+
+### Credentials and assessment artifacts
+
+Supply real model and judge keys through environment variables. The harness writes the model key to `.pi-agent/models.json`; on POSIX systems its directory is restricted to the owner and the file uses mode `0600`, including existing files. `.pi-agent/` is ignored by Git. Environment variables and file permissions do not encrypt credentials.
+
+Reports, captured responses, and `.pi-agent/workdir/transcript.json` can contain sensitive target data. Generated reports, local scan results, screenshots, `.env`, and `.env.*` files are ignored; `.env.example` remains tracked. Review artifacts before sharing them, and keep only dummy values in examples and fixtures. Ignore rules do not remove files already committed.
+
+With [Gitleaks](https://github.com/gitleaks/gitleaks) installed, scan local files and all locally available branch history before publishing:
+
+```bash
+gitleaks dir . --redact
+gitleaks git . --log-opts="--all" --redact
+```
+
+The deliberately vulnerable target checkouts and test fixtures contain fake secrets and may trigger findings. Review each finding rather than excluding entire credential rules. If a real credential was committed, revoke or rotate it first; removing it from the current files does not remove it from Git history.
+
+### Authorized targets
 
 Only assess systems you own or have explicit permission to test. The scripted and model-driven attacks are bounded by scope checks and per-run budgets in the TypeScript harness. In the isolated workflow, the target cannot make outbound network requests while running; the harness can contact the configured model service over the internal network. Avoid configuring a third-party model endpoint when prompts or target responses must remain local.
 

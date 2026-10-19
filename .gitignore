@@ -5,7 +5,14 @@ dashboard/status.json
 .pi-agent/
 *.log
 .env
+.env.*
+!.env.example
 .DS_Store
+
+# Assessment captures may contain target responses, credentials, and screenshots.
+agent-scan-results/
+redteam-results/
+screenshots/
 
 # Virtual environments & external targets
 .venv/

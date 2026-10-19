@@ -5,7 +5,7 @@
  * models.json, so the harness never depends on a user's global ~/.pi config.
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -85,8 +85,12 @@ export function loadConfig(overrides: Partial<HarnessConfig> = {}): HarnessConfi
  * agentDir to pass to Pi.
  */
 export function ensureModelsJson(cfg: HarnessConfig): string {
-	mkdirSync(cfg.agentDir, { recursive: true });
+	// models.json contains the configured API key; restrict the directory and file
+	// even when upgrading a workdir created by an earlier version of the harness.
+	mkdirSync(cfg.agentDir, { recursive: true, mode: 0o700 });
+	chmodSync(cfg.agentDir, 0o700);
 	const modelsPath = resolve(cfg.agentDir, "models.json");
+	if (existsSync(modelsPath)) chmodSync(modelsPath, 0o600);
 	const doc = {
 		$schema: "https://pi.dev/schemas/models.schema.json",
 		providers: {
@@ -109,7 +113,7 @@ export function ensureModelsJson(cfg: HarnessConfig): string {
 	// Only rewrite when changed, so we don't churn the file every run.
 	const next = JSON.stringify(doc, null, 2);
 	if (!existsSync(modelsPath) || readFileSync(modelsPath, "utf8") !== next) {
-		writeFileSync(modelsPath, next);
+		writeFileSync(modelsPath, next, { mode: 0o600 });
 	}
 	return cfg.agentDir;
 }
